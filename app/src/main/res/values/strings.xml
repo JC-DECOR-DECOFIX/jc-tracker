@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JC Tracker</string>
+    <string name="route_label">Rota</string>
+    <string name="route_hint">ex. 1234</string>
+    <string name="start_tracking">INICIAR RASTREAMENTO</string>
+    <string name="stop_tracking">ENCERRAR RASTREAMENTO</string>
+    <string name="resume">RETOMAR</string>
+    <string name="end">ENCERRAR</string>
+    <string name="open_settings">ABRIR CONFIGURAÇÕES</string>
+    <string name="tracking_active">RASTREAMENTO ATIVO</string>
+    <string name="gps_available">GPS disponível</string>
+    <string name="gps_unavailable">GPS indisponível</string>
+    <string name="internet_available">Internet disponível</string>
+    <string name="internet_unavailable">Internet indisponível</string>
+    <string name="gps_off_detail">GPS indisponível. Ative a localização para continuar o rastreamento.</string>
+    <string name="permission_required">Permissão de localização necessária.</string>
+    <string name="precise_required">Permissão de localização precisa necessária.</string>
+    <string name="notification_required">Permissão de notificação necessária para mostrar o rastreamento.</string>
+    <string name="no_internet_warning">Sem internet</string>
+    <string name="pending_waiting">%1$d pontos aguardando envio</string>
+    <string name="low_accuracy">GPS com baixa precisão ± %1$s m</string>
+    <string name="accuracy_ok">Precisão ± %1$s m</string>
+    <string name="route_number">Rota #%1$s</string>
+    <string name="interrupted">Uma sessão de rastreamento da rota #%1$s foi interrompida.</string>
+    <string name="route_required">Informe o identificador da rota.</string>
+    <string name="route_invalid">Use apenas letras, números, hífen ou sublinhado.</string>
+    <string name="awaiting_fix">Aguardando primeira posição</string>
+    <string name="channel_name">Rastreamento de rota</string>
+    <string name="channel_desc">Mostra que a localização da rota está sendo compartilhada.</string>
+    <string name="latitude">Latitude</string>
+    <string name="longitude">Longitude</string>
+    <string name="speed">Velocidade</string>
+    <string name="pending_points">Pontos pendentes</string>
+    <string name="play_services_missing">Serviços do Google Play indisponíveis. O rastreamento precisa deles para o GPS de alta precisão.</string>
+    <string name="idle_subtitle">Rastreamento de localização durante a rota de entrega.</string>
+    <string name="notification_sharing">Rastreamento da rota #%1$s ativo. Localização sendo compartilhada.</string>
+    <string name="waiting_send">aguardando envio</string>
+</resources>

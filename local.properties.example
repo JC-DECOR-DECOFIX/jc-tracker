@@ -1,0 +1,13 @@
+# Copie para local.properties (esse arquivo NÃO é commitado).
+# sdk.dir é o Android SDK local. O Android Studio também grava essa chave.
+sdk.dir=/caminho/para/Android/Sdk
+
+# MOCK: não chama a rede; o payload vai para o log JCTracker.
+# REAL: POST HTTPS na API abaixo.
+TRACKING_MODE=MOCK
+
+# Obrigatório no modo REAL. Precisa terminar com /.
+API_BASE_URL=https://api.exemplo.jcdecor.com.br/
+
+# Token Bearer. Não commitar valor real. Não é impresso nos logs.
+API_TOKEN=
