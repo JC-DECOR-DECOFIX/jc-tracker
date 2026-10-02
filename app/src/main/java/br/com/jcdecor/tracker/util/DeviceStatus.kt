@@ -7,6 +7,7 @@ import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
@@ -41,6 +42,14 @@ object PermissionStatus {
         if (Build.VERSION.SDK_INT < 33) return true
         return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+    }
+}
+
+object BatteryStatus {
+    /** true quando a otimização de bateria ainda pode cortar o processo. */
+    fun optimizationRestricts(context: Context): Boolean {
+        val manager = context.getSystemService(PowerManager::class.java) ?: return false
+        return !manager.isIgnoringBatteryOptimizations(context.packageName)
     }
 }
 

@@ -5,10 +5,9 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 
 object TrackingIntents {
-    fun start(context: Context, routeId: String) {
+    fun start(context: Context) {
         val intent = Intent(context, TrackingForegroundService::class.java).apply {
             action = TrackingForegroundService.ACTION_START
-            putExtra(TrackingForegroundService.EXTRA_ROUTE_ID, routeId)
         }
         ContextCompat.startForegroundService(context, intent)
     }

@@ -8,7 +8,8 @@ import br.com.jcdecor.tracker.tracking.PendingPoint
 @Entity(tableName = "pending_location")
 data class PendingLocationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    @ColumnInfo(name = "route_id") val routeId: String,
+    @ColumnInfo(name = "tracking_session_id") val trackingSessionId: String,
+    @ColumnInfo(name = "route_id") val routeId: String?,
     @ColumnInfo(name = "device_id") val deviceId: String,
     val sequence: Long,
     val latitude: Double,
@@ -24,6 +25,7 @@ data class PendingLocationEntity(
 
 fun PendingPoint.toEntity(): PendingLocationEntity = PendingLocationEntity(
     id = id,
+    trackingSessionId = trackingSessionId,
     routeId = routeId,
     deviceId = deviceId,
     sequence = sequence,
@@ -40,6 +42,7 @@ fun PendingPoint.toEntity(): PendingLocationEntity = PendingLocationEntity(
 
 fun PendingLocationEntity.toPoint(): PendingPoint = PendingPoint(
     id = id,
+    trackingSessionId = trackingSessionId,
     routeId = routeId,
     deviceId = deviceId,
     sequence = sequence,

@@ -26,15 +26,15 @@ class AppGraph(context: Context) {
     val pendingStore = RoomPendingLocationStore(database.pendingLocationDao())
     val sessionStore = SessionStore(appContext.sessionDataStore)
     val deviceIdStore = DeviceIdStore(appContext.deviceDataStore)
-    private val mode = BuildConfig.TRACKING_MODE
-    private val baseUrl = BuildConfig.API_BASE_URL
+    val trackingMode = BuildConfig.TRACKING_MODE
+    val apiBaseUrl = BuildConfig.API_BASE_URL
     private val token = BuildConfig.API_TOKEN
-    val heartbeat: HeartbeatClient = TrackingClients.heartbeat(mode, baseUrl, token, log)
+    val heartbeat: HeartbeatClient = TrackingClients.heartbeat(trackingMode, apiBaseUrl, token, log, runtime)
     val locationProvider = AndroidLocationProvider(appContext)
     val repository = TrackingRepository(
         engine = TrackingEngine(
             store = pendingStore,
-            uploader = TrackingClients.locationUploader(mode, baseUrl, token, log),
+            uploader = TrackingClients.locationUploader(trackingMode, apiBaseUrl, token, log, runtime),
             log = log,
         ),
         sessionStore = sessionStore,

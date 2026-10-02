@@ -20,7 +20,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -34,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.jcdecor.tracker.tracking.SessionStatus
 import br.com.jcdecor.tracker.util.Formats
-import br.com.jcdecor.tracker.util.RelativeTime
+import br.com.jcdecor.tracker.util.Iso8601
 
 private val Ok = Color(0xFF1F6B62)
 private val Warn = Color(0xFF8A5A00)
@@ -45,13 +44,15 @@ private val Muted = Color(0xFF5C6B68)
 @Composable
 fun TrackingScreen(
     state: TrackerUiState,
-    onRouteChange: (String) -> Unit,
     onStart: () -> Unit,
     onResume: () -> Unit,
     onStop: () -> Unit,
     onEndInterrupted: () -> Unit,
+    onToggleDebug: () -> Unit,
+    onCopyDebug: () -> Unit,
     onOpenLocationSettings: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -73,219 +74,165 @@ fun TrackingScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            when {
-                state.interrupted -> InterruptedCard(
-                    routeId = state.session?.routeId.orEmpty(),
-                    pendingCount = state.pendingCount,
-                    onResume = onResume,
-                    onEnd = onEndInterrupted,
-                )
-                state.running -> ActiveCard(
-                    state = state,
-                    onStop = onStop,
-                    onOpenLocationSettings = onOpenLocationSettings,
-                    onOpenAppSettings = onOpenAppSettings,
-                )
-                else -> IdleCard(
-                    state = state,
-                    onRouteChange = onRouteChange,
-                    onStart = onStart,
-                    onOpenLocationSettings = onOpenLocationSettings,
-                    onOpenAppSettings = onOpenAppSettings,
-                )
+            Text("Status:", fontWeight = FontWeight.Medium)
+            if (state.interrupted) {
+                Text("Uma sessão de rastreamento foi interrompida.", fontWeight = FontWeight.Medium)
+                Button(onClick = onResume, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("RETOMAR", fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(onClick = onEndInterrupted, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("ENCERRAR")
+                }
+            } else if (state.running) {
+                ActiveStatus(state)
+                Button(
+                    onClick = onStop,
+                    enabled = state.session?.status != SessionStatus.STOPPING,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Bad),
+                ) {
+                    Text("PARAR TRACKING", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Dot(Muted)
+                    Text("Rastreamento parado", modifier = Modifier.padding(start = 8.dp), fontSize = 18.sp)
+                }
+                Button(onClick = onStart, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("INICIAR TRACKING", fontWeight = FontWeight.Bold)
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun IdleCard(
-    state: TrackerUiState,
-    onRouteChange: (String) -> Unit,
-    onStart: () -> Unit,
-    onOpenLocationSettings: () -> Unit,
-    onOpenAppSettings: () -> Unit,
-) {
-    Text(
-        text = "Rastreamento de localização durante a rota de entrega.",
-        color = Muted,
-        fontSize = 15.sp,
-    )
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = state.routeInput,
-                onValueChange = onRouteChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Rota") },
-                placeholder = { Text("ex. 1234") },
-                singleLine = true,
-            )
-            Button(
-                onClick = onStart,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Text("INICIAR RASTREAMENTO", fontWeight = FontWeight.Bold)
+            OutlinedButton(onClick = onToggleDebug, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Text("DEBUG", fontWeight = FontWeight.Bold)
             }
             state.message?.let { Text(it, color = Bad, fontWeight = FontWeight.Medium) }
-        }
-    }
-    StatusLine(if (state.gpsAvailable) "GPS disponível" else "GPS indisponível", state.gpsAvailable)
-    StatusLine(if (state.internetAvailable) "Internet disponível" else "Internet indisponível", state.internetAvailable)
-    if (!state.gpsAvailable) {
-        Text(
-            "GPS indisponível. Ative a localização para continuar o rastreamento.",
-            color = Warn,
-        )
-        OutlinedButton(onClick = onOpenLocationSettings, modifier = Modifier.fillMaxWidth()) {
-            Text("ABRIR CONFIGURAÇÕES")
-        }
-    }
-    if (!state.hasFineLocation) {
-        Text("Permissão de localização necessária.", color = Bad)
-        OutlinedButton(onClick = onOpenAppSettings, modifier = Modifier.fillMaxWidth()) {
-            Text("ABRIR CONFIGURAÇÕES")
-        }
-    }
-    if (state.pendingCount > 0) {
-        Text("${state.pendingCount} pontos aguardando envio", color = Warn, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun ActiveCard(
-    state: TrackerUiState,
-    onStop: () -> Unit,
-    onOpenLocationSettings: () -> Unit,
-    onOpenAppSettings: () -> Unit,
-) {
-    val route = state.session?.routeId.orEmpty()
-    val stopping = state.session?.status == SessionStatus.STOPPING
-    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Dot(Ok)
+            if (!state.gpsAvailable && !state.running) {
                 Text(
-                    "RASTREAMENTO ATIVO",
-                    color = Ok,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-            Text("Rota #$route", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            val fix = state.lastFix
-            if (fix == null) {
-                Text("Aguardando primeira posição", color = Muted)
-            } else if (!fix.acceptable) {
-                Text(
-                    "GPS com baixa precisão ± ${Formats.accuracy(fix.accuracyMeters)} m",
+                    "GPS indisponível. Ative a localização para continuar o rastreamento.",
                     color = Warn,
-                    fontWeight = FontWeight.Medium,
                 )
-            } else {
-                Text("Precisão ± ${Formats.accuracy(fix.accuracyMeters)} m")
+                OutlinedButton(onClick = onOpenLocationSettings, modifier = Modifier.fillMaxWidth()) {
+                    Text("ABRIR CONFIGURAÇÕES")
+                }
             }
-            Text(RelativeTime.updateLabel(fix?.receivedAtEpochMs ?: state.session?.lastLocationAtEpochMs, state.nowEpochMs))
-            if (fix != null) {
-                Metric("Latitude", Formats.coordinate(fix.latitude))
-                Metric("Longitude", Formats.coordinate(fix.longitude))
-                Metric("Velocidade", Formats.speedKmh(fix.speedMetersPerSecond))
+            if (!state.hasFineLocation) {
+                Text("Permissão de localização necessária.", color = Bad)
+                OutlinedButton(onClick = onOpenAppSettings, modifier = Modifier.fillMaxWidth()) {
+                    Text("ABRIR CONFIGURAÇÕES")
+                }
             }
-            if (!state.internetAvailable) {
-                Spacer(Modifier.height(4.dp))
-                Text("⚠ Sem internet", color = Warn, fontWeight = FontWeight.Bold)
-                Text("${state.pendingCount} pontos aguardando envio", color = Warn)
-            } else {
-                Text("Pontos pendentes: ${state.pendingCount}")
-            }
-            Spacer(Modifier.height(8.dp))
-            Button(
-                onClick = onStop,
-                enabled = !stopping,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Bad),
-            ) {
-                Text("ENCERRAR RASTREAMENTO", fontWeight = FontWeight.Bold)
+            if (state.showDebug) {
+                DebugPanel(state, onCopyDebug, onOpenBatterySettings)
             }
         }
     }
-    StatusLine(if (state.gpsAvailable) "GPS disponível" else "GPS indisponível", state.gpsAvailable)
-    StatusLine(if (state.internetAvailable) "Internet disponível" else "Internet indisponível", state.internetAvailable)
-    if (!state.gpsAvailable) {
-        Text("GPS indisponível. Ative a localização para continuar o rastreamento.", color = Warn)
-        OutlinedButton(onClick = onOpenLocationSettings, modifier = Modifier.fillMaxWidth()) {
-            Text("ABRIR CONFIGURAÇÕES")
-        }
-    }
-    if (!state.hasFineLocation) {
-        Text("Permissão de localização necessária.", color = Bad)
-        OutlinedButton(onClick = onOpenAppSettings, modifier = Modifier.fillMaxWidth()) {
-            Text("ABRIR CONFIGURAÇÕES")
-        }
-    }
-    if (!state.playServicesAvailable) {
+}
+
+@Composable
+private fun ActiveStatus(state: TrackerUiState) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Dot(Ok)
         Text(
-            "Serviços do Google Play indisponíveis. O rastreamento precisa deles para o GPS de alta precisão.",
-            color = Bad,
+            "Rastreamento ativo",
+            modifier = Modifier.padding(start = 8.dp),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
         )
     }
+    val fix = state.lastFix
+    if (fix == null) {
+        Text("Precisão: —")
+        Text("Última localização: aguardando")
+    } else {
+        Text(
+            "Precisão: ± ${Formats.accuracy(fix.accuracyMeters)} m",
+            color = if (fix.acceptable) Color.Unspecified else Warn,
+        )
+        Text(locationLine(fix.receivedAtEpochMs, state.nowEpochMs))
+    }
+    Text(if (state.internetAvailable) "Internet: Online" else "Internet: Offline")
+    Text("Pontos pendentes: ${state.pendingCount}")
 }
 
 @Composable
-private fun InterruptedCard(
-    routeId: String,
-    pendingCount: Int,
-    onResume: () -> Unit,
-    onEnd: () -> Unit,
+private fun DebugPanel(
+    state: TrackerUiState,
+    onCopyDebug: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
 ) {
-    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8EE))) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                "Uma sessão de rastreamento da rota #$routeId foi interrompida.",
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp,
-            )
-            if (pendingCount > 0) {
-                Text("$pendingCount pontos aguardando envio", color = Warn)
+    Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Tracking", fontWeight = FontWeight.Bold)
+            DebugLine("state", state.session?.status?.name ?: "IDLE")
+            DebugLine("trackingSessionId", state.session?.trackingSessionId ?: "null")
+            DebugLine("routeId", state.session?.routeId ?: "null")
+            DebugLine("deviceId", state.session?.deviceId ?: "null")
+            DebugLine("startedAt", state.session?.startedAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
+            DebugLine("lastLocationAt", state.session?.lastLocationAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
+            DebugLine("sequence", state.session?.sequence?.toString() ?: "0")
+
+            Spacer(Modifier.height(8.dp))
+            Text("GPS", fontWeight = FontWeight.Bold)
+            val fix = state.lastFix
+            DebugLine("latitude", fix?.latitude?.let(Formats::coordinate) ?: "null")
+            DebugLine("longitude", fix?.longitude?.let(Formats::coordinate) ?: "null")
+            DebugLine("accuracy", fix?.accuracyMeters?.let { "${Formats.accuracy(it)} m" } ?: "null")
+            DebugLine("speed", fix?.speedMetersPerSecond?.toString() ?: "null")
+            DebugLine("bearing", fix?.bearingDegrees?.toString() ?: "null")
+            DebugLine("altitude", fix?.altitudeMeters?.toString() ?: "null")
+            DebugLine("recordedAt", fix?.recordedAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
+
+            Spacer(Modifier.height(8.dp))
+            Text("Service", fontWeight = FontWeight.Bold)
+            DebugLine("foreground service", state.serviceActive.toString())
+            DebugLine("location updates", state.locationUpdatesActive.toString())
+            DebugLine("heartbeat", state.heartbeatActive.toString())
+            DebugLine("app", if (state.appInForeground) "foreground" else "background")
+
+            Spacer(Modifier.height(8.dp))
+            Text("Network", fontWeight = FontWeight.Bold)
+            DebugLine("link", if (state.internetAvailable) "online" else "offline")
+            DebugLine("mode", state.trackingMode.ifBlank { "MOCK" })
+            DebugLine("base URL", state.apiBaseUrl.ifBlank { "null" })
+            DebugLine("último envio", state.lastUploadAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
+            DebugLine("último erro HTTP", state.lastHttpError ?: "null")
+            DebugLine("pontos pendentes", state.pendingCount.toString())
+
+            Spacer(Modifier.height(8.dp))
+            Text("Battery", fontWeight = FontWeight.Bold)
+            DebugLine("otimização ativa", state.batteryRestricted.toString())
+            DebugLine("unrestricted", (!state.batteryRestricted).toString())
+            if (state.batteryRestricted) {
+                Text("Restrição de bateria pode interromper tracking em background.", color = Warn)
+                OutlinedButton(onClick = onOpenBatterySettings, modifier = Modifier.fillMaxWidth()) {
+                    Text("ABRIR CONFIGURAÇÕES DE BATERIA")
+                }
             }
-            Button(
-                onClick = onResume,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Text("RETOMAR", fontWeight = FontWeight.Bold)
-            }
-            OutlinedButton(
-                onClick = onEnd,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-            ) {
-                Text("ENCERRAR")
+
+            Spacer(Modifier.height(8.dp))
+            Text("Storage", fontWeight = FontWeight.Bold)
+            DebugLine("pending locations", state.pendingCount.toString())
+            DebugLine("sessão persistida", if (state.session != null) "sim" else "não")
+
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = onCopyDebug, modifier = Modifier.fillMaxWidth()) {
+                Text("COPIAR DEBUG", fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
 @Composable
-private fun StatusLine(text: String, ok: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Dot(if (ok) Ok else Bad)
-        Text(text, modifier = Modifier.padding(start = 8.dp), fontSize = 16.sp)
-    }
+private fun DebugLine(label: String, value: String) {
+    Text("$label: $value", fontSize = 14.sp)
 }
 
-@Composable
-private fun Metric(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Muted)
-        Text(value, fontWeight = FontWeight.Medium)
+private fun locationLine(atEpochMs: Long, nowEpochMs: Long): String {
+    val seconds = ((nowEpochMs - atEpochMs) / 1000L).coerceAtLeast(0L)
+    return when {
+        seconds < 5 -> "Última localização: agora"
+        seconds < 60 -> "Última localização: há ${seconds}s"
+        else -> "Última localização: há ${seconds / 60} min"
     }
 }
 

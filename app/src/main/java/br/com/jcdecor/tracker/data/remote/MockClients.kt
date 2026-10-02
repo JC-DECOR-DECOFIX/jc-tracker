@@ -9,15 +9,17 @@ import br.com.jcdecor.tracker.util.Formats
 
 class MockLocationUploader(
     private val log: TrackerLog,
+    private val diagnostics: br.com.jcdecor.tracker.tracking.UploadDiagnostics? = null,
 ) : LocationUploader {
     override suspend fun upload(point: PendingPoint): UploadResult {
         log.info(
-            "MOCK location route=${point.routeId} seq=${point.sequence} " +
+            "MOCK location session=${point.trackingSessionId} route=${point.routeId ?: "null"} seq=${point.sequence} " +
                 "lat=${Formats.coordinate(point.latitude)} lng=${Formats.coordinate(point.longitude)} " +
                 "accuracy=${Formats.accuracy(point.accuracy)} speed=${point.speed} " +
                 "bearing=${point.bearing} altitude=${point.altitude} recorded_at=${point.recordedAt} " +
                 "device_id=${point.deviceId}",
         )
+        diagnostics?.onUploadSuccess(System.currentTimeMillis())
         return UploadResult.Success
     }
 }
@@ -25,8 +27,13 @@ class MockLocationUploader(
 class MockHeartbeatClient(
     private val log: TrackerLog,
 ) : HeartbeatClient {
-    override suspend fun send(routeId: String, deviceId: String, recordedAt: String) {
-        log.info("tracking heartbeat route=$routeId")
+    override suspend fun send(
+        trackingSessionId: String,
+        routeId: String?,
+        deviceId: String,
+        recordedAt: String,
+    ) {
+        log.info("tracking heartbeat session=$trackingSessionId route=${routeId ?: "null"}")
     }
 }
 
@@ -37,5 +44,10 @@ class RetryableUploader(
 }
 
 class RetryableHeartbeat : HeartbeatClient {
-    override suspend fun send(routeId: String, deviceId: String, recordedAt: String) = Unit
+    override suspend fun send(
+        trackingSessionId: String,
+        routeId: String?,
+        deviceId: String,
+        recordedAt: String,
+    ) = Unit
 }

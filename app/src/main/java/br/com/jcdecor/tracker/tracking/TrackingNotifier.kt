@@ -30,16 +30,15 @@ class TrackingNotifier(private val context: Context) {
         manager.createNotificationChannel(channel)
     }
 
-    fun build(routeId: String, lastFixAtEpochMs: Long?, nowEpochMs: Long): Notification {
+    fun build(lastFixAtEpochMs: Long?, nowEpochMs: Long): Notification {
         ensureChannel()
-        val route = context.getString(R.string.route_number, routeId)
+        val status = context.getString(R.string.notification_active)
         val age = RelativeTime.notificationLabel(lastFixAtEpochMs, nowEpochMs)
-        val shared = context.getString(R.string.notification_sharing, routeId)
         return NotificationCompat.Builder(context, TrackingConfig.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
             .setContentTitle(context.getString(R.string.app_name))
-            .setContentText(route)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$route\n$age\n$shared"))
+            .setContentText(status)
+            .setStyle(NotificationCompat.BigTextStyle().bigText("$status\n$age"))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)

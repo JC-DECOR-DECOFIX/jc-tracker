@@ -1,6 +1,8 @@
 package br.com.jcdecor.tracker.ui
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -13,7 +15,6 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import br.com.jcdecor.tracker.TrackerApplication
-import br.com.jcdecor.tracker.tracking.RouteId
 import br.com.jcdecor.tracker.tracking.TrackingIntents
 import br.com.jcdecor.tracker.ui.theme.JCTrackerTheme
 import br.com.jcdecor.tracker.util.LocationStatus
@@ -44,18 +45,25 @@ class MainActivity : ComponentActivity() {
                 val state by viewModel.ui.collectAsStateWithLifecycle()
                 TrackingScreen(
                     state = state,
-                    onRouteChange = viewModel::onRouteChange,
                     onStart = { begin(PendingAction.START) },
                     onResume = { begin(PendingAction.RESUME) },
                     onStop = { TrackingIntents.stop(this) },
                     onEndInterrupted = viewModel::endInterrupted,
+                    onToggleDebug = viewModel::toggleDebug,
+                    onCopyDebug = { copyDebug() },
                     onOpenLocationSettings = {
                         startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     },
                     onOpenAppSettings = { openAppSettings() },
+                    onOpenBatterySettings = { openBatterySettings() },
                 )
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        viewModel.setAppInForeground(true)
     }
 
     override fun onResume() {
@@ -63,18 +71,12 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshStatus()
     }
 
+    override fun onStop() {
+        viewModel.setAppInForeground(false)
+        super.onStop()
+    }
+
     private fun begin(action: PendingAction) {
-        if (action == PendingAction.START) {
-            val route = viewModel.ui.value.routeInput
-            if (route.isBlank()) {
-                viewModel.showMessage("Informe o identificador da rota.")
-                return
-            }
-            if (RouteId.normalize(route) == null) {
-                viewModel.showMessage("Use apenas letras, números, hífen ou sublinhado.")
-                return
-            }
-        }
         val missing = missingPermissions()
         if (missing.isNotEmpty()) {
             pendingAction = action
@@ -98,10 +100,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         when (action) {
-            PendingAction.START -> {
-                val route = RouteId.normalize(viewModel.ui.value.routeInput) ?: return
-                TrackingIntents.start(this, route)
-            }
+            PendingAction.START -> TrackingIntents.start(this)
             PendingAction.RESUME -> TrackingIntents.resume(this)
             PendingAction.NONE -> Unit
         }
@@ -119,12 +118,25 @@ class MainActivity : ComponentActivity() {
         return missing.toTypedArray()
     }
 
+    private fun copyDebug() {
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        clipboard.setPrimaryClip(ClipData.newPlainText("JC Tracker debug", viewModel.debugText()))
+    }
+
     private fun openAppSettings() {
         startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.fromParts("package", packageName, null)
             },
         )
+    }
+
+    private fun openBatterySettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (_: Exception) {
+            viewModel.showMessage("Não foi possível abrir as configurações de bateria.")
+        }
     }
 
     private enum class PendingAction { NONE, START, RESUME }

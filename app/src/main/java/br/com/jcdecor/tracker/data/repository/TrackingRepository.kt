@@ -12,6 +12,7 @@ import br.com.jcdecor.tracker.tracking.TrackingEngine
 import br.com.jcdecor.tracker.tracking.TrackingRuntime
 import br.com.jcdecor.tracker.tracking.TrackingSession
 import br.com.jcdecor.tracker.tracking.isActive
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -37,9 +38,12 @@ class TrackingRepository(
         engine.session
     }
 
-    suspend fun start(routeId: String): StartOutcome = mutex.withLock {
+    suspend fun start(): StartOutcome = mutex.withLock {
         ensureRestoredLocked()
-        val outcome = engine.start(routeId, deviceIdStore.getOrCreate())
+        val outcome = engine.start(
+            deviceId = deviceIdStore.getOrCreate(),
+            trackingSessionId = UUID.randomUUID().toString(),
+        )
         persistLocked(lastFix = null)
         outcome
     }
@@ -134,6 +138,8 @@ class TrackingRepository(
         longitude = fix.longitude,
         accuracyMeters = fix.accuracyMeters,
         speedMetersPerSecond = fix.speedMetersPerSecond,
+        bearingDegrees = fix.bearingDegrees,
+        altitudeMeters = fix.altitudeMeters,
         recordedAtEpochMs = fix.recordedAtEpochMs,
         receivedAtEpochMs = receivedAtEpochMs,
         acceptable = acceptable,

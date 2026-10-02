@@ -45,15 +45,16 @@ class TrackingForegroundService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
-                val routeHint = intent?.getStringExtra(EXTRA_ROUTE_ID) ?: "…"
-                if (!enterForeground(routeHint)) {
+                if (!enterForeground()) {
+                    graph.runtime.serviceActive.value = false
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                graph.runtime.serviceActive.value = true
                 scope.launch {
                     when (intent?.action) {
-                        ACTION_RESUME -> begin(routeId = null, resume = true)
-                        ACTION_START -> begin(routeId = intent.getStringExtra(EXTRA_ROUTE_ID).orEmpty(), resume = false)
+                        ACTION_RESUME -> begin(resume = true)
+                        ACTION_START -> begin(resume = false)
                         else -> restoreAfterRestart()
                     }
                 }
@@ -62,7 +63,14 @@ class TrackingForegroundService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Fechar a activity ou arrastar o app dos recentes não encerra o tracking.
+    }
+
     override fun onDestroy() {
+        graph.runtime.serviceActive.value = false
+        graph.runtime.locationUpdatesActive.value = false
+        graph.runtime.heartbeatActive.value = false
         graph.locationProvider.stop()
         stopLoops()
         unregisterWatchers()
@@ -70,8 +78,8 @@ class TrackingForegroundService : Service() {
         super.onDestroy()
     }
 
-    private suspend fun begin(routeId: String?, resume: Boolean) {
-        val outcome = if (resume) graph.repository.resume() else graph.repository.start(routeId.orEmpty())
+    private suspend fun begin(resume: Boolean) {
+        val outcome = if (resume) graph.repository.resume() else graph.repository.start()
         when (outcome) {
             is StartOutcome.Started, is StartOutcome.Resumed, is StartOutcome.AlreadyActive -> {
                 val session = graph.repository.currentSession()
@@ -127,6 +135,7 @@ class TrackingForegroundService : Service() {
         }) {
             LocationStartResult.STARTED -> {
                 updatesStarted = true
+                graph.runtime.locationUpdatesActive.value = true
                 graph.runtime.playServicesAvailable.value = true
             }
             LocationStartResult.PLAY_SERVICES_UNAVAILABLE -> {
@@ -134,6 +143,7 @@ class TrackingForegroundService : Service() {
                 graph.log.info("PLAY_SERVICES_UNAVAILABLE")
             }
             LocationStartResult.MISSING_PERMISSION -> {
+                graph.runtime.locationUpdatesActive.value = false
                 graph.log.info("LOCATION_PERMISSION_MISSING")
             }
         }
@@ -141,12 +151,14 @@ class TrackingForegroundService : Service() {
 
     private fun startLoops() {
         if (jobs.isNotEmpty()) return
+        graph.runtime.heartbeatActive.value = true
         jobs += scope.launch {
             while (isActive) {
                 delay(TrackingConfig.HEARTBEAT_INTERVAL_MS)
                 val session = graph.repository.currentSession() ?: break
                 if (!session.status.isActive() || session.interrupted) break
                 graph.heartbeat.send(
+                    trackingSessionId = session.trackingSessionId,
                     routeId = session.routeId,
                     deviceId = session.deviceId,
                     recordedAt = Iso8601.formatUtc(System.currentTimeMillis()),
@@ -183,6 +195,8 @@ class TrackingForegroundService : Service() {
 
     private suspend fun stopTracking() {
         updatesStarted = false
+        graph.runtime.locationUpdatesActive.value = false
+        graph.runtime.heartbeatActive.value = false
         graph.locationProvider.stop()
         stopLoops()
         unregisterWatchers()
@@ -206,7 +220,6 @@ class TrackingForegroundService : Service() {
         val session = graph.repository.currentSession() ?: return
         if (!session.status.isActive() || session.interrupted) return
         val notification = notifier.build(
-            routeId = session.routeId,
             lastFixAtEpochMs = graph.runtime.lastFix.value?.receivedAtEpochMs,
             nowEpochMs = System.currentTimeMillis(),
         )
@@ -214,10 +227,10 @@ class TrackingForegroundService : Service() {
         manager.notify(TrackingConfig.NOTIFICATION_ID, notification)
     }
 
-    private fun enterForeground(routeId: String): Boolean {
+    private fun enterForeground(): Boolean {
         return try {
             notifier.ensureChannel()
-            val notification = notifier.build(routeId, null, System.currentTimeMillis())
+            val notification = notifier.build(null, System.currentTimeMillis())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
                     TrackingConfig.NOTIFICATION_ID,
@@ -244,6 +257,9 @@ class TrackingForegroundService : Service() {
 
     private suspend fun shutdownQuietly() {
         updatesStarted = false
+        graph.runtime.serviceActive.value = false
+        graph.runtime.locationUpdatesActive.value = false
+        graph.runtime.heartbeatActive.value = false
         graph.locationProvider.stop()
         stopLoops()
         unregisterWatchers()
@@ -252,6 +268,7 @@ class TrackingForegroundService : Service() {
     }
 
     private fun stopLoops() {
+        graph.runtime.heartbeatActive.value = false
         jobs.forEach { it.cancel() }
         jobs.clear()
     }
@@ -310,6 +327,5 @@ class TrackingForegroundService : Service() {
         const val ACTION_START = "br.com.jcdecor.tracker.action.START"
         const val ACTION_RESUME = "br.com.jcdecor.tracker.action.RESUME"
         const val ACTION_STOP = "br.com.jcdecor.tracker.action.STOP"
-        const val EXTRA_ROUTE_ID = "route_id"
     }
 }

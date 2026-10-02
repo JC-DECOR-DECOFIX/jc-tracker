@@ -25,9 +25,7 @@ class TrackingEngine(
         session = saved?.takeUnless { it.status == SessionStatus.IDLE || it.status == SessionStatus.STOPPED }
     }
 
-    fun start(routeId: String, deviceId: String): StartOutcome {
-        val normalized = RouteId.normalize(routeId)
-            ?: return StartOutcome.InvalidRoute("Informe o identificador da rota.")
+    fun start(deviceId: String, trackingSessionId: String): StartOutcome {
         val current = session
         if (current != null && current.interrupted && current.status.isActive()) {
             return StartOutcome.InterruptedPending(current)
@@ -36,15 +34,15 @@ class TrackingEngine(
             return StartOutcome.AlreadyActive(current)
         }
         val created = TrackingSession(
-            routeId = normalized,
+            trackingSessionId = trackingSessionId,
             deviceId = deviceId,
             startedAtEpochMs = clock(),
-            lastLocationAtEpochMs = null,
-            sequence = 0,
+            routeId = null,
+            driverId = null,
             status = SessionStatus.STARTING,
         )
         session = created
-        log.info("TRACKING_STARTED route=$normalized")
+        log.info("TRACKING_STARTED session=$trackingSessionId")
         return StartOutcome.Started(created)
     }
 
@@ -59,7 +57,7 @@ class TrackingEngine(
         }
         val resumed = current.copy(status = SessionStatus.STARTING, interrupted = false)
         session = resumed
-        log.info("TRACKING_STARTED route=${resumed.routeId}")
+        log.info("TRACKING_STARTED session=${resumed.trackingSessionId}")
         return StartOutcome.Resumed(resumed)
     }
 
@@ -102,7 +100,7 @@ class TrackingEngine(
             stoppedAtEpochMs = clock(),
         )
         session = stopped
-        log.info("TRACKING_STOPPED route=${stopped.routeId}")
+        log.info("TRACKING_STOPPED session=${stopped.trackingSessionId}")
         return stopped
     }
 
@@ -123,7 +121,7 @@ class TrackingEngine(
             stoppedAtEpochMs = clock(),
         )
         session = stopped
-        log.info("TRACKING_STOPPED route=${stopped.routeId}")
+        log.info("TRACKING_STOPPED session=${stopped.trackingSessionId}")
         return stopped
     }
 
@@ -165,6 +163,7 @@ class TrackingEngine(
         val hadOlder = store.listInSendOrder().isNotEmpty()
         store.insert(
             PendingPoint(
+                trackingSessionId = session!!.trackingSessionId,
                 routeId = session!!.routeId,
                 deviceId = session!!.deviceId,
                 sequence = sequence,
@@ -183,7 +182,9 @@ class TrackingEngine(
             return LocationOutcome.Accepted(sequence, sent = false, buffered = true, bufferReason = "NETWORK")
         }
         flush(networkAvailable = true)
-        val stillThere = store.listInSendOrder().any { it.sequence == sequence && it.routeId == session?.routeId }
+        val stillThere = store.listInSendOrder().any {
+            it.sequence == sequence && it.trackingSessionId == session?.trackingSessionId
+        }
         if (stillThere && hadOlder) {
             log.info("LOCATION_BUFFERED seq=$sequence reason=ORDER")
         }
@@ -211,6 +212,10 @@ class TrackingEngine(
                     nextAttemptAt.remove(next.id)
                     log.info("LOCATION_SENT seq=${next.sequence}")
                     sent++
+                }
+                UploadResult.WaitingForRoute -> {
+                    log.info("LOCATION_BUFFERED seq=${next.sequence} reason=NO_ROUTE")
+                    break
                 }
                 is UploadResult.Retryable -> {
                     store.incrementRetry(next.id)

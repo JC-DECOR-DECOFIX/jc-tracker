@@ -5,6 +5,7 @@ import java.util.ArrayDeque
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,7 +13,7 @@ class TrackingEngineTest {
     @Test
     fun sequenceIncrementsOnlyForAcceptedFixes() = runBlocking {
         val harness = harness()
-        harness.engine.start("1234", "dev-1")
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         harness.engine.onLocation(fix(accuracy = 6f, lat = 0.0), networkAvailable = true)
         harness.engine.onLocation(fix(accuracy = 132f, lat = 0.2), networkAvailable = true)
         harness.engine.onLocation(fix(accuracy = 12f, lat = 0.2), networkAvailable = true)
@@ -27,7 +28,7 @@ class TrackingEngineTest {
     @Test
     fun buffersWhenOfflineAndKeepsThePointAfterStop() = runBlocking {
         val harness = harness()
-        harness.engine.start("1234", "dev-1")
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         val outcome = harness.engine.onLocation(fix(accuracy = 8f), networkAvailable = false)
         harness.engine.beginStop()
         harness.engine.finishStop()
@@ -36,17 +37,18 @@ class TrackingEngineTest {
         assertEquals(1, harness.store.count())
         val stored = harness.store.listInSendOrder().single()
         assertEquals(1L, stored.sequence)
-        assertEquals("1234", stored.routeId)
+        assertNull(stored.routeId)
+        assertEquals("session-1", stored.trackingSessionId)
         assertEquals("dev-1", stored.deviceId)
         assertEquals(Iso8601.formatUtc(harness.now), stored.recordedAt)
         assertTrue(harness.log.lines.contains("LOCATION_BUFFERED seq=1 reason=NETWORK"))
-        assertTrue(harness.log.lines.contains("TRACKING_STOPPED route=1234"))
+        assertTrue(harness.log.lines.contains("TRACKING_STOPPED session=session-1"))
     }
 
     @Test
     fun removesPointOnlyAfterConfirmedUpload() = runBlocking {
         val harness = harness(results = ArrayDeque(listOf(UploadResult.Retryable("HTTP_500"), UploadResult.Success)))
-        harness.engine.start("1234", "dev-1")
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         harness.engine.onLocation(fix(accuracy = 5f), networkAvailable = true)
         assertEquals(1, harness.store.count())
         assertTrue(harness.log.lines.contains("LOCATION_BUFFERED seq=1 reason=HTTP_500"))
@@ -62,7 +64,7 @@ class TrackingEngineTest {
     @Test
     fun doesNotSendLaterPointsBeforeAnOlderFailure() = runBlocking {
         val harness = harness(results = ArrayDeque(listOf(UploadResult.Retryable("HTTP_503"))))
-        harness.engine.start("88", "dev-1")
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-88")
         harness.engine.onLocation(fix(accuracy = 4f, lat = -23.5), networkAvailable = true)
         harness.engine.onLocation(fix(accuracy = 4f, lat = -23.6), networkAvailable = true)
 
@@ -83,7 +85,7 @@ class TrackingEngineTest {
     fun pendingBufferSurvivesANewEngineInstance() = runBlocking {
         val store = InMemoryPendingLocationStore()
         val first = engine(store, FakeUploader())
-        first.engine.start("1234", "dev-1")
+        first.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         first.engine.onLocation(fix(accuracy = 9f, recordedAt = first.clock.now), networkAvailable = false)
         val saved = first.engine.session
 
@@ -91,14 +93,15 @@ class TrackingEngineTest {
         second.engine.restore(saved)
         assertEquals(1, second.store.count())
         assertEquals(1L, second.engine.session?.sequence)
-        assertEquals("1234", second.engine.session?.routeId)
+        assertEquals("session-1", second.engine.session?.trackingSessionId)
+        assertNull(second.engine.session?.routeId)
     }
 
     @Test
     fun interruptedSessionIsRestoredAndBlocksASecondSession() = runBlocking {
         val store = InMemoryPendingLocationStore()
         val first = engine(store, FakeUploader())
-        first.engine.start("1234", "dev-1")
+        first.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         first.engine.onLocation(fix(accuracy = 7f, lat = 1.0, recordedAt = first.clock.now), networkAvailable = true)
         first.engine.markInterrupted()
         val saved = first.engine.session
@@ -107,9 +110,10 @@ class TrackingEngineTest {
 
         val restored = engine(store, FakeUploader())
         restored.engine.restore(saved)
-        val blocked = restored.engine.start("9999", "dev-1")
+        val blocked = restored.engine.start(deviceId = "dev-1", trackingSessionId = "other-session")
         assertTrue(blocked is StartOutcome.InterruptedPending)
-        assertEquals("1234", restored.engine.session?.routeId)
+        assertEquals("session-1", restored.engine.session?.trackingSessionId)
+        assertNull(restored.engine.session?.routeId)
 
         val resumed = restored.engine.resume()
         assertTrue(resumed is StartOutcome.Resumed)
@@ -121,42 +125,79 @@ class TrackingEngineTest {
     @Test
     fun refusesTwoSimultaneousSessionsUntilTheFirstStops() = runBlocking {
         val harness = harness()
-        val started = harness.engine.start("1234", "dev-1")
-        val second = harness.engine.start("55", "dev-2")
+        val started = harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-a")
+        val second = harness.engine.start(deviceId = "dev-2", trackingSessionId = "session-b")
 
         assertTrue(started is StartOutcome.Started)
         assertTrue(second is StartOutcome.AlreadyActive)
-        assertEquals("1234", harness.engine.session?.routeId)
+        assertEquals("session-a", harness.engine.session?.trackingSessionId)
+        assertNull(harness.engine.session?.routeId)
+        assertNull(harness.engine.session?.driverId)
         assertEquals(SessionStatus.STARTING, harness.engine.session?.status)
 
         harness.engine.beginStop()
         harness.engine.finishStop()
-        val again = harness.engine.start("55", "dev-1")
+        assertEquals(SessionStatus.STOPPED, harness.engine.session?.status)
+        assertTrue(harness.engine.session?.stoppedAtEpochMs != null)
+        val again = harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-c")
         assertTrue(again is StartOutcome.Started)
-        assertEquals("55", harness.engine.session?.routeId)
+        assertEquals("session-c", harness.engine.session?.trackingSessionId)
         assertEquals(0L, harness.engine.session?.sequence)
     }
 
     @Test
     fun endingAnInterruptedSessionAllowsANewOneWithoutDeletingTheBuffer() = runBlocking {
         val harness = harness()
-        harness.engine.start("1234", "dev-1")
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         harness.engine.onLocation(fix(accuracy = 6f), networkAvailable = false)
         harness.engine.markInterrupted()
         harness.engine.dismissInterrupted()
         assertEquals(SessionStatus.STOPPED, harness.engine.session?.status)
         assertEquals(1, harness.store.count())
 
-        val started = harness.engine.start("77", "dev-1")
+        val started = harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-2")
         assertTrue(started is StartOutcome.Started)
         assertEquals(1, harness.store.count())
     }
 
     @Test
-    fun logsTrackingStartedWithTheRoute() = runBlocking {
+    fun startsWithoutRouteIdAndLogsTheSession() = runBlocking {
         val harness = harness()
-        harness.engine.start("1234", "dev-1")
-        assertTrue(harness.log.lines.contains("TRACKING_STARTED route=1234"))
+        val started = harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
+        assertTrue(started is StartOutcome.Started)
+        assertNull(harness.engine.session?.routeId)
+        assertNull(harness.engine.session?.driverId)
+        assertEquals("session-1", harness.engine.session?.trackingSessionId)
+        assertTrue(harness.log.lines.contains("TRACKING_STARTED session=session-1"))
+    }
+
+    @Test
+    fun restoredActiveSessionSurvivesActivityRecreation() = runBlocking {
+        val store = InMemoryPendingLocationStore()
+        val first = engine(store, FakeUploader())
+        first.engine.start(deviceId = "dev-1", trackingSessionId = "session-live")
+        first.engine.markTracking()
+        val saved = first.engine.session
+        assertEquals(SessionStatus.TRACKING, saved?.status)
+
+        val recreated = engine(store, FakeUploader())
+        recreated.engine.restore(saved)
+        assertEquals(SessionStatus.TRACKING, recreated.engine.session?.status)
+        assertEquals("session-live", recreated.engine.session?.trackingSessionId)
+        assertTrue(recreated.engine.session!!.status.isActive())
+        val second = recreated.engine.start(deviceId = "dev-1", trackingSessionId = "session-new")
+        assertTrue(second is StartOutcome.AlreadyActive)
+        assertEquals("session-live", recreated.engine.session?.trackingSessionId)
+    }
+
+    @Test
+    fun holdsUploadUntilARouteExists() = runBlocking {
+        val harness = harness(results = ArrayDeque(listOf(UploadResult.WaitingForRoute)))
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
+        harness.engine.onLocation(fix(accuracy = 5f), networkAvailable = true)
+        assertEquals(1, harness.store.count())
+        assertNull(harness.store.listInSendOrder().single().routeId)
+        assertTrue(harness.log.lines.contains("LOCATION_BUFFERED seq=1 reason=NO_ROUTE"))
     }
 
     private fun harness(results: ArrayDeque<UploadResult> = ArrayDeque()): Harness {

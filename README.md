@@ -2,7 +2,7 @@
 
 Rastreador de localização dos motoristas da **JC DECOR** enquanto uma rota de entrega está em andamento.
 
-O app não é um sistema de logística. Não há pedidos, fotos, bipagem, mapa, navegação, ETA nem cadastro de motorista. O motorista informa o `route_id`, inicia o rastreamento e o aparelho continua enviando a posição com a tela apagada, até ele encerrar.
+O app não é um sistema de logística. Não há pedidos, fotos, bipagem, mapa, navegação, ETA nem cadastro de motorista. O motorista toca em **INICIAR TRACKING** e o aparelho continua enviando a posição com a tela apagada, até ele tocar em **PARAR TRACKING**. O `route_id` fica vazio nesta versão e virá depois da integração com a Logística. Não é digitado na tela.
 
 ## Como rodar
 
@@ -21,10 +21,10 @@ Requisitos desta versão: `minSdk` 26, `compileSdk`/`targetSdk` 35, JDK 17 ou su
 
 ## Modo MOCK (sem backend)
 
-O padrão é `TRACKING_MODE=MOCK`. A coleta de GPS continua, o payload é escrito no log com a tag `JCTracker` e nenhum servidor é chamado. O heartbeat aparece como:
+O padrão é `TRACKING_MODE=MOCK`. A coleta de GPS continua, o payload é escrito no log com a tag `JCTracker` e nenhum servidor é chamado. Sem rota, o log traz `route=null`. O heartbeat aparece como:
 
 ```text
-tracking heartbeat route=1234
+tracking heartbeat session=<uuid> route=null
 ```
 
 No Android Studio, filtre o Logcat por `JCTracker`. O APK MOCK é o que se instala no celular para validar o rastreamento antes da API existir.
@@ -47,14 +47,14 @@ Depois de mudar o `local.properties`, rode o Gradle sync de novo.
 
 ## Teste de GPS no aparelho
 
-1. Gere e instale o APK debug (comandos abaixo).
+1. Instale o APK debug (comandos abaixo).
 2. Conceda localização precisa e notificação.
 3. Ative a localização do sistema.
-4. Informe uma rota, por exemplo `1234`, e toque em **INICIAR RASTREAMENTO**.
-5. Confira a notificação persistente. Troque de app e apague a tela: o rastreamento continua.
-6. Caminhe alguns metros. A precisão, a coordenada e a hora da última atualização mudam na tela.
-7. Desligue a internet: a notificação e a tela continuam ativas e os pontos ficam pendentes. Religue: eles são enviados em ordem.
-8. Toque em **ENCERRAR RASTREAMENTO**. A notificação some. Pontos que não confirmaram continuam no aparelho.
+4. Toque em **INICIAR TRACKING**. A tela mostra o status no mesmo lugar, sem abrir outra tela.
+5. Confira a notificação persistente. Troque de app, apague a tela ou feche a activity: o rastreamento continua.
+6. Acompanhe precisão, última localização, internet e pontos pendentes. Se precisar do detalhe técnico, toque em **DEBUG**.
+7. Desligue a internet: a tela continua ativa e os pontos ficam pendentes. Religue: no MOCK eles saem do buffer; no REAL o POST só ocorre quando houver `route_id`.
+8. Toque em **PARAR TRACKING**. A notificação some. Pontos que não confirmaram continuam no aparelho.
 
 O aparelho precisa dos serviços do Google Play, porque a coleta usa o Fused Location Provider.
 

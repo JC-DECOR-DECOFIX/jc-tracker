@@ -15,19 +15,37 @@ fun SessionStatus.isActive(): Boolean =
         this == SessionStatus.DEGRADED ||
         this == SessionStatus.STOPPING
 
-data class TrackingSession(
-    val routeId: String,
+data class TrackingContext(
+    val trackingSessionId: String,
     val deviceId: String,
     val startedAtEpochMs: Long,
-    val lastLocationAtEpochMs: Long?,
-    val sequence: Long,
+    val routeId: String? = null,
+    val driverId: String? = null,
+)
+
+data class TrackingSession(
+    val trackingSessionId: String,
+    val deviceId: String,
+    val startedAtEpochMs: Long,
+    val routeId: String? = null,
+    val driverId: String? = null,
+    val lastLocationAtEpochMs: Long? = null,
+    val sequence: Long = 0,
     val status: SessionStatus,
     val interrupted: Boolean = false,
     val stoppedAtEpochMs: Long? = null,
     val lastAcceptedLatitude: Double? = null,
     val lastAcceptedLongitude: Double? = null,
     val lastAcceptedAtEpochMs: Long? = null,
-)
+) {
+    fun context(): TrackingContext = TrackingContext(
+        trackingSessionId = trackingSessionId,
+        deviceId = deviceId,
+        startedAtEpochMs = startedAtEpochMs,
+        routeId = routeId,
+        driverId = driverId,
+    )
+}
 
 data class RawFix(
     val latitude: Double,
@@ -44,6 +62,8 @@ data class LastFixSnapshot(
     val longitude: Double,
     val accuracyMeters: Float,
     val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
+    val altitudeMeters: Double?,
     val recordedAtEpochMs: Long,
     val receivedAtEpochMs: Long,
     val acceptable: Boolean,
@@ -51,7 +71,8 @@ data class LastFixSnapshot(
 
 data class PendingPoint(
     val id: Long = 0,
-    val routeId: String,
+    val trackingSessionId: String,
+    val routeId: String?,
     val deviceId: String,
     val sequence: Long,
     val latitude: Double,
@@ -94,6 +115,9 @@ sealed class LocationOutcome {
 sealed class UploadResult {
     data object Success : UploadResult()
     data class Retryable(val reason: String) : UploadResult()
+
+    /** Ponto fica no buffer. O POST real só acontece quando houver routeId. */
+    data object WaitingForRoute : UploadResult()
 }
 
 interface LocationUploader {
@@ -109,7 +133,17 @@ interface PendingLocationStore {
 }
 
 interface HeartbeatClient {
-    suspend fun send(routeId: String, deviceId: String, recordedAt: String)
+    suspend fun send(
+        trackingSessionId: String,
+        routeId: String?,
+        deviceId: String,
+        recordedAt: String,
+    )
+}
+
+interface UploadDiagnostics {
+    fun onUploadSuccess(atEpochMs: Long)
+    fun onHttpError(message: String)
 }
 
 interface TrackerLog {

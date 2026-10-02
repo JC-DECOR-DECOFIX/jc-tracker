@@ -30,9 +30,11 @@ class SessionStore(
             if (session == null) {
                 prefs.clearSession()
             } else {
-                prefs[KEY_ROUTE] = session.routeId
+                prefs[KEY_SESSION] = session.trackingSessionId
                 prefs[KEY_DEVICE] = session.deviceId
                 prefs[KEY_STARTED] = session.startedAtEpochMs
+                putOptionalString(prefs, KEY_ROUTE, session.routeId)
+                putOptionalString(prefs, KEY_DRIVER, session.driverId)
                 prefs[KEY_STATUS] = session.status.name
                 prefs[KEY_SEQUENCE] = session.sequence
                 prefs[KEY_INTERRUPTED] = session.interrupted
@@ -50,6 +52,8 @@ class SessionStore(
                 prefs[KEY_FIX_RECEIVED] = lastFix.receivedAtEpochMs
                 prefs[KEY_FIX_OK] = lastFix.acceptable
                 putOptionalString(prefs, KEY_FIX_SPEED, lastFix.speedMetersPerSecond?.toString())
+                putOptionalString(prefs, KEY_FIX_BEARING, lastFix.bearingDegrees?.toString())
+                putOptionalString(prefs, KEY_FIX_ALTITUDE, lastFix.altitudeMeters?.toString())
             }
         }
     }
@@ -63,7 +67,9 @@ class SessionStore(
     }
 
     private fun MutablePreferences.clearSession() {
+        remove(KEY_SESSION)
         remove(KEY_ROUTE)
+        remove(KEY_DRIVER)
         remove(KEY_DEVICE)
         remove(KEY_STARTED)
         remove(KEY_STATUS)
@@ -77,15 +83,17 @@ class SessionStore(
     }
 
     private fun Preferences.toSession(): TrackingSession? {
-        val route = this[KEY_ROUTE] ?: return null
+        val sessionId = this[KEY_SESSION] ?: return null
         val device = this[KEY_DEVICE] ?: return null
         val started = this[KEY_STARTED] ?: return null
         val statusName = this[KEY_STATUS] ?: return null
         val status = runCatching { SessionStatus.valueOf(statusName) }.getOrNull() ?: return null
         return TrackingSession(
-            routeId = route,
+            trackingSessionId = sessionId,
             deviceId = device,
             startedAtEpochMs = started,
+            routeId = this[KEY_ROUTE],
+            driverId = this[KEY_DRIVER],
             lastLocationAtEpochMs = this[KEY_LAST_LOCATION],
             sequence = this[KEY_SEQUENCE] ?: 0L,
             status = status,
@@ -108,6 +116,8 @@ class SessionStore(
             longitude = lng,
             accuracyMeters = accuracy,
             speedMetersPerSecond = this[KEY_FIX_SPEED]?.toFloatOrNull(),
+            bearingDegrees = this[KEY_FIX_BEARING]?.toFloatOrNull(),
+            altitudeMeters = this[KEY_FIX_ALTITUDE]?.toDoubleOrNull(),
             recordedAtEpochMs = recorded,
             receivedAtEpochMs = received,
             acceptable = this[KEY_FIX_OK] ?: false,
@@ -115,7 +125,9 @@ class SessionStore(
     }
 
     private companion object {
+        val KEY_SESSION = stringPreferencesKey("tracking_session_id")
         val KEY_ROUTE = stringPreferencesKey("route_id")
+        val KEY_DRIVER = stringPreferencesKey("driver_id")
         val KEY_DEVICE = stringPreferencesKey("device_id")
         val KEY_STARTED = longPreferencesKey("started_at")
         val KEY_STATUS = stringPreferencesKey("status")
@@ -130,6 +142,8 @@ class SessionStore(
         val KEY_FIX_LNG = stringPreferencesKey("fix_lng")
         val KEY_FIX_ACC = floatPreferencesKey("fix_accuracy")
         val KEY_FIX_SPEED = stringPreferencesKey("fix_speed")
+        val KEY_FIX_BEARING = stringPreferencesKey("fix_bearing")
+        val KEY_FIX_ALTITUDE = stringPreferencesKey("fix_altitude")
         val KEY_FIX_RECORDED = longPreferencesKey("fix_recorded")
         val KEY_FIX_RECEIVED = longPreferencesKey("fix_received")
         val KEY_FIX_OK = booleanPreferencesKey("fix_ok")

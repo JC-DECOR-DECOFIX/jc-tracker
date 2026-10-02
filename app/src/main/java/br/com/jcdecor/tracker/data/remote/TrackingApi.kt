@@ -9,6 +9,8 @@ import retrofit2.http.Path
 
 data class LocationBody(
     @SerializedName("device_id") val deviceId: String,
+    @SerializedName("tracking_session_id") val trackingSessionId: String,
+    @SerializedName("route_id") val routeId: String?,
     val sequence: Long,
     val latitude: Double,
     val longitude: Double,

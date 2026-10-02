@@ -25,14 +25,14 @@ Estados da sessão: `IDLE`, `STARTING`, `TRACKING`, `DEGRADED`, `STOPPING`, `STO
 
 ## 2. Fluxo de tracking
 
-1. O motorista digita o `route_id` (letras, números, hífen ou sublinhado).
+1. O motorista toca em **INICIAR TRACKING**. Não há campo de `route_id`.
 2. O app exige localização precisa, GPS ligado e, no Android 13+, permissão de notificação.
-3. Só então a activity chama `startForegroundService` em `TrackingForegroundService`.
+3. A activity gera um `trackingSessionId` (UUID), lê o `deviceId` persistido e chama `startForegroundService`. `routeId` e `driverId` nascem `null` até a Logística preencher.
 4. O service promove a notificação na hora, grava a sessão (`STARTING` → `TRACKING`) e pede localização de alta precisão.
 5. Cada leitura passa pelo filtro. Posição aceita ganha `sequence` (1, 2, 3… na sessão), entra no Room e segue para o envio.
-6. A fila sai em ordem de `created_at` e `sequence`. Se o ponto mais antigo falha, os seguintes esperam.
-7. Heartbeat a cada 30 s.
-8. **ENCERRAR** para o GPS, tenta esvaziar a fila (no máximo 8 s), grava o horário de encerramento, tira a notificação e marca `STOPPED`.
+6. A fila sai em ordem de `created_at` e `sequence`. Se o ponto mais antigo falha, os seguintes esperam. Sem `routeId`, o modo REAL não faz POST e o ponto permanece no buffer. O MOCK registra o payload com `route=null` e confirma o envio local.
+7. Heartbeat a cada 30 s. No REAL ele também espera um `routeId`.
+8. **PARAR TRACKING** para o GPS, tenta esvaziar a fila (no máximo 8 s), grava o horário de encerramento, tira a notificação e marca `STOPPED`.
 
 Não existem duas sessões ativas. Um segundo início devolve a sessão que já está correndo.
 
@@ -46,11 +46,11 @@ A notificação é contínua:
 
 ```text
 JC Tracker
-Rota #1234
+Rastreamento ativo
 Última posição há X segundos
 ```
 
-O texto expandido também diz que o rastreamento da rota está ativo e que a localização está sendo compartilhada. A ação **ENCERRAR** manda um `PendingIntent` para o próprio service parar.
+A ação **ENCERRAR** manda um `PendingIntent` para o próprio service parar. Arrastar o app dos recentes não chama `stopTracking()`.
 
 `START_STICKY`: se o processo morrer no meio do rastreamento, o sistema pode recriar o service e o GPS volta, porque a sessão ainda está `TRACKING` no DataStore. Isso não acontece depois de um reboot (ver seção 8).
 
@@ -68,7 +68,7 @@ Não pedimos `ACCESS_BACKGROUND_LOCATION`. Com o serviço de localização em pr
 
 ## 5. Armazenamento offline
 
-Tabela Room `pending_location`: `id`, `route_id`, `device_id`, `sequence`, `latitude`, `longitude`, `accuracy`, `speed`, `bearing`, `altitude`, `recorded_at`, `created_at`, `retry_count`.
+Tabela Room `pending_location`: `id`, `tracking_session_id`, `route_id` (nullable), `device_id`, `sequence`, `latitude`, `longitude`, `accuracy`, `speed`, `bearing`, `altitude`, `recorded_at`, `created_at`, `retry_count`.
 
 Uma posição válida não é descartada se a rede caiu, o backend não respondeu, deu timeout ou voltou 5xx (4xx também fica na fila, para não perder o ponto). A linha só sai depois de resposta 2xx.
 
@@ -84,9 +84,13 @@ Sessão e device id ficam no DataStore. O device id é um UUID criado na primeir
 
 `POST /api/tracking/routes/{routeId}/locations`
 
+O client REAL só chama esse path quando o ponto tem `routeId`. Sem rota, não há POST e não se inventa um identificador no caminho.
+
 ```json
 {
   "device_id": "uuid",
+  "tracking_session_id": "uuid",
+  "route_id": null,
   "sequence": 21,
   "latitude": -23.5,
   "longitude": -46.6,
@@ -108,16 +112,16 @@ Header: `Authorization: Bearer <token>` e `Content-Type: application/json`. O to
 
 `POST /api/tracking/routes/{routeId}/heartbeat` a cada 30 s, com `device_id` e `recorded_at`.
 
-No MOCK só há log: `tracking heartbeat route=1234`. No REAL a chamada existe; se o endpoint ainda não estiver no ar, a falha é registrada sem o token e o rastreamento continua. Heartbeat não entra na fila offline.
+No MOCK só há log: `tracking heartbeat session=<uuid> route=null`. No REAL a chamada só sai quando houver `routeId`. Se o endpoint ainda não estiver no ar, a falha é registrada sem o token e o rastreamento continua. Heartbeat não entra na fila offline.
 
 ## 8. Comportamento em background
 
-Com a sessão ativa, trocar de app, apagar a tela ou fechar a activity não para o service. Se só a UI morrer, o processo e o service seguem. Se a activity for recriada, ela lê a sessão e mostra **RASTREAMENTO ATIVO** e a rota.
+Com a sessão ativa, trocar de app, apagar a tela, fechar a activity ou arrastar o app dos recentes não para o service. Se a activity for recriada, ela lê a sessão persistida e mostra **Rastreamento ativo**.
 
 Depois de um reboot o tracking **não** volta sozinho. `BOOT_COMPLETED` apenas marca a sessão como interrompida. Na próxima abertura:
 
 ```text
-Uma sessão de rastreamento da rota #1234 foi interrompida.
+Uma sessão de rastreamento foi interrompida.
 [ RETOMAR ] [ ENCERRAR ]
 ```
 
@@ -175,14 +179,15 @@ Não commitar o APK, o `local.properties` nem um token real.
 ### Logs (tag `JCTracker`)
 
 ```text
-TRACKING_STARTED route=1234
+TRACKING_STARTED session=<uuid>
 LOCATION_RECEIVED accuracy=4.8
 LOCATION_ACCEPTED seq=21
 LOCATION_BUFFERED seq=21 reason=NETWORK
 LOCATION_SENT seq=21
 LOCATION_REJECTED accuracy=132
-TRACKING_STOPPED route=1234
-tracking heartbeat route=1234
+TRACKING_STOPPED session=<uuid>
+MOCK location session=<uuid> route=null ...
+tracking heartbeat session=<uuid> route=null
 ```
 
 No MOCK, o payload completo da posição também é logado, sem o token.

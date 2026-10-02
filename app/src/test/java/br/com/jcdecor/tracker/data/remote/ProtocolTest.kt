@@ -26,6 +26,13 @@ class ProtocolTest {
     }
 
     @Test
+    fun realPostRequiresARoute() {
+        assertTrue(RouteGate.canPost("rota-real"))
+        assertTrue(!RouteGate.canPost(null))
+        assertTrue(!RouteGate.canPost("  "))
+    }
+
+    @Test
     fun bearerHeaderIsOmittedWhenTokenIsBlank() {
         assertNull(ApiAuth.bearer("  "))
         assertEquals("Bearer abc", ApiAuth.bearer("abc"))
@@ -34,8 +41,8 @@ class ProtocolTest {
     @Test
     fun mockHeartbeatUsesTheExpectedLogLine() = runBlocking {
         val log = MemoryLog()
-        MockHeartbeatClient(log).send("1234", "dev", "2026-10-01T00:00:00.000Z")
-        assertEquals("tracking heartbeat route=1234", log.lines.single())
+        MockHeartbeatClient(log).send("session-1", null, "dev", "2026-10-01T00:00:00.000Z")
+        assertEquals("tracking heartbeat session=session-1 route=null", log.lines.single())
     }
 
     @Test
@@ -43,7 +50,8 @@ class ProtocolTest {
         val log = MemoryLog()
         val result = MockLocationUploader(log).upload(
             PendingPoint(
-                routeId = "1234",
+                trackingSessionId = "session-1",
+                routeId = null,
                 deviceId = "dev-1",
                 sequence = 21,
                 latitude = -23.5,
@@ -58,8 +66,9 @@ class ProtocolTest {
         )
         assertTrue(result is UploadResult.Success)
         val line = log.lines.single()
+        assertTrue(line.contains("session=session-1"))
         assertTrue(line.contains("seq=21"))
-        assertTrue(line.contains("route=1234"))
+        assertTrue(line.contains("route=null"))
         assertTrue(line.contains("recorded_at=2026-10-01T12:00:00.000Z"))
         assertTrue(!line.contains("Bearer"))
         assertTrue(!line.contains("API_TOKEN"))
