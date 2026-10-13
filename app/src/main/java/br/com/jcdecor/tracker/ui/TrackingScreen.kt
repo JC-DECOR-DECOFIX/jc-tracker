@@ -163,10 +163,13 @@ private fun DebugPanel(
     Card(colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Tracking", fontWeight = FontWeight.Bold)
+            DebugLine("mode", state.trackingMode.ifBlank { "MOCK" })
+            DebugLine("device registered", if (state.deviceRegistered) "yes" else "no")
+            DebugLine("deviceId", state.installationDeviceId ?: state.session?.deviceId ?: "null")
+            DebugLine("credential", state.credentialState)
             DebugLine("state", state.session?.status?.name ?: "IDLE")
             DebugLine("trackingSessionId", state.session?.trackingSessionId ?: "null")
             DebugLine("routeId", state.session?.routeId ?: "null")
-            DebugLine("deviceId", state.session?.deviceId ?: "null")
             DebugLine("startedAt", state.session?.startedAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
             DebugLine("lastLocationAt", state.session?.lastLocationAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
             DebugLine("sequence", state.session?.sequence?.toString() ?: "0")
@@ -195,6 +198,7 @@ private fun DebugPanel(
             DebugLine("mode", state.trackingMode.ifBlank { "MOCK" })
             DebugLine("base URL", state.apiBaseUrl.ifBlank { "null" })
             DebugLine("último envio", state.lastUploadAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
+            DebugLine("último heartbeat", state.lastHeartbeatAtEpochMs?.let(Iso8601::formatUtc) ?: "null")
             DebugLine("último erro HTTP", state.lastHttpError ?: "null")
             DebugLine("pontos pendentes", state.pendingCount.toString())
 

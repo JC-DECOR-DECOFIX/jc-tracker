@@ -1,5 +1,6 @@
 package br.com.jcdecor.tracker.data.remote
 
+import br.com.jcdecor.tracker.tracking.HeartbeatPing
 import br.com.jcdecor.tracker.tracking.MemoryLog
 import br.com.jcdecor.tracker.tracking.PendingPoint
 import br.com.jcdecor.tracker.tracking.UploadResult
@@ -26,13 +27,6 @@ class ProtocolTest {
     }
 
     @Test
-    fun realPostRequiresARoute() {
-        assertTrue(RouteGate.canPost("rota-real"))
-        assertTrue(!RouteGate.canPost(null))
-        assertTrue(!RouteGate.canPost("  "))
-    }
-
-    @Test
     fun bearerHeaderIsOmittedWhenTokenIsBlank() {
         assertNull(ApiAuth.bearer("  "))
         assertEquals("Bearer abc", ApiAuth.bearer("abc"))
@@ -41,7 +35,7 @@ class ProtocolTest {
     @Test
     fun mockHeartbeatUsesTheExpectedLogLine() = runBlocking {
         val log = MemoryLog()
-        MockHeartbeatClient(log).send("session-1", null, "dev", "2026-10-01T00:00:00.000Z")
+        MockHeartbeatClient(log).send(HeartbeatPing("session-1", "dev", "2026-10-01T00:00:00.000Z"))
         assertEquals("tracking heartbeat session=session-1 route=null", log.lines.single())
     }
 

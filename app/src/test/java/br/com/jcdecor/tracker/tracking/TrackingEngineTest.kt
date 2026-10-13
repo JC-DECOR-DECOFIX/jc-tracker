@@ -191,13 +191,13 @@ class TrackingEngineTest {
     }
 
     @Test
-    fun holdsUploadUntilARouteExists() = runBlocking {
-        val harness = harness(results = ArrayDeque(listOf(UploadResult.WaitingForRoute)))
+    fun sendsPointWithoutRouteId() = runBlocking {
+        val harness = harness()
         harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-1")
         harness.engine.onLocation(fix(accuracy = 5f), networkAvailable = true)
-        assertEquals(1, harness.store.count())
-        assertNull(harness.store.listInSendOrder().single().routeId)
-        assertTrue(harness.log.lines.contains("LOCATION_BUFFERED seq=1 reason=NO_ROUTE"))
+        assertEquals(0, harness.store.count())
+        assertEquals(listOf(1L), harness.uploader.uploaded)
+        assertNull(harness.engine.session?.routeId)
     }
 
     private fun harness(results: ArrayDeque<UploadResult> = ArrayDeque()): Harness {

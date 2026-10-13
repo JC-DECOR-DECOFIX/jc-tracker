@@ -6,35 +6,47 @@ import org.junit.Test
 
 class DebugReportTest {
     @Test
-    fun debugReportDoesNotExposeApiToken() {
+    fun debugReportShowsOperationalStateAndHidesSecrets() {
+        val bootstrap = "jcsvc_examplepublic_not-a-real-secret"
+        val device = "jctdev_examplepublic_not-a-real-secret"
         val text = buildDebugReport(
             DebugSnapshot(
+                trackingMode = "REAL",
+                deviceRegistered = true,
+                deviceId = "dev-1",
+                credentialState = "valid",
                 trackingState = "TRACKING",
                 serviceActive = true,
                 trackingSessionId = "session-1",
                 routeId = null,
-                deviceId = "dev-1",
                 lastLocationAgeSeconds = 4,
                 accuracyMeters = 8.4f,
+                lastGps = "-23.5,-46.6",
                 networkOnline = true,
                 pendingLocations = 0,
                 batteryOptimization = false,
-                lastHttpError = null,
+                lastUploadAtEpochMs = 1_700_000_000_000L,
+                lastHeartbeatAtEpochMs = 1_700_000_000_000L,
+                lastHttpError = "Authorization: Bearer $bootstrap $device",
             ),
         )
-        assertTrue(text.contains("tracking_state=TRACKING"))
-        assertTrue(text.contains("service_active=true"))
-        assertTrue(text.contains("tracking_session_id=session-1"))
-        assertTrue(text.contains("route_id=null"))
+        assertTrue(text.contains("tracking_mode=REAL"))
+        assertTrue(text.contains("device_registered=yes"))
         assertTrue(text.contains("device_id=dev-1"))
-        assertTrue(text.contains("last_location_age=4s"))
-        assertTrue(text.contains("accuracy=8.4"))
+        assertTrue(text.contains("credential_state=valid"))
+        assertTrue(text.contains("tracking_session_id=session-1"))
+        assertTrue(text.contains("session_status=TRACKING"))
         assertTrue(text.contains("network=ONLINE"))
         assertTrue(text.contains("pending_locations=0"))
-        assertTrue(text.contains("battery_optimization=false"))
-        assertTrue(text.contains("last_http_error=null"))
+        assertTrue(text.contains("last_gps=-23.5,-46.6"))
+        assertTrue(text.contains("last_successful_upload="))
+        assertTrue(text.contains("last_heartbeat="))
+        assertTrue(text.contains("last_api_error="))
+        assertTrue(text.contains("jcsvc_<redacted>"))
+        assertTrue(text.contains("jctdev_<redacted>"))
+        assertFalse(text.contains(bootstrap))
+        assertFalse(text.contains(device))
+        assertFalse(text.contains("BOOTSTRAP_TOKEN"))
         assertFalse(text.contains("API_TOKEN"))
-        assertFalse(text.contains("Authorization"))
-        assertFalse(text.contains("Bearer"))
     }
 }

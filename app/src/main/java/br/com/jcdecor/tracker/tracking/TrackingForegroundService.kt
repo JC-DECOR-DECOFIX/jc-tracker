@@ -12,8 +12,10 @@ import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
+import br.com.jcdecor.tracker.BuildConfig
 import br.com.jcdecor.tracker.TrackerApplication
 import br.com.jcdecor.tracker.location.LocationStartResult
+import br.com.jcdecor.tracker.util.BatteryStatus
 import br.com.jcdecor.tracker.util.Iso8601
 import br.com.jcdecor.tracker.util.LocationStatus
 import br.com.jcdecor.tracker.util.NetworkStatus
@@ -104,7 +106,12 @@ class TrackingForegroundService : Service() {
 
     private suspend fun restoreAfterRestart() {
         val session = graph.repository.currentSession()
-        if (session != null && session.status.isActive() && !session.interrupted) {
+        if (session?.stopPending == true || session?.status == br.com.jcdecor.tracker.tracking.SessionStatus.STOPPING) {
+            if (!graph.repository.completeStop()) startStopRetryLoop()
+            else shutdownQuietly()
+            return
+        }
+        if (session != null && session.status.isCollecting() && !session.interrupted) {
             graph.repository.markTracking()
             startUpdates()
             startLoops()
@@ -156,12 +163,17 @@ class TrackingForegroundService : Service() {
             while (isActive) {
                 delay(TrackingConfig.HEARTBEAT_INTERVAL_MS)
                 val session = graph.repository.currentSession() ?: break
-                if (!session.status.isActive() || session.interrupted) break
+                if (!session.status.isCollecting() || session.interrupted || session.stopPending) break
                 graph.heartbeat.send(
-                    trackingSessionId = session.trackingSessionId,
-                    routeId = session.routeId,
-                    deviceId = session.deviceId,
-                    recordedAt = Iso8601.formatUtc(System.currentTimeMillis()),
+                    br.com.jcdecor.tracker.tracking.HeartbeatPing(
+                        trackingSessionId = session.trackingSessionId,
+                        deviceId = session.deviceId,
+                        recordedAt = Iso8601.formatUtc(System.currentTimeMillis()),
+                        appVersion = BuildConfig.VERSION_NAME,
+                        batteryLevel = BatteryStatus.percent(this@TrackingForegroundService),
+                        isCharging = BatteryStatus.charging(this@TrackingForegroundService),
+                        networkType = NetworkStatus.typeLabel(this@TrackingForegroundService),
+                    ),
                 )
             }
         }
@@ -204,9 +216,25 @@ class TrackingForegroundService : Service() {
         withTimeoutOrNull(TrackingConfig.STOP_FLUSH_TIMEOUT_MS) {
             graph.repository.flush(NetworkStatus.isOnline(this@TrackingForegroundService))
         }
-        graph.repository.finishStop()
-        removeForeground()
-        stopSelf()
+        if (graph.repository.completeStop()) {
+            removeForeground()
+            stopSelf()
+        } else {
+            startStopRetryLoop()
+        }
+    }
+
+    private fun startStopRetryLoop() {
+        jobs += scope.launch {
+            while (isActive) {
+                delay(TrackingConfig.FLUSH_INTERVAL_MS)
+                if (!NetworkStatus.isOnline(this@TrackingForegroundService)) continue
+                if (graph.repository.completeStop()) {
+                    shutdownQuietly()
+                    break
+                }
+            }
+        }
     }
 
     private suspend fun refreshHealth() {
@@ -292,7 +320,7 @@ class TrackingForegroundService : Service() {
                 override fun onAvailable(network: Network) {
                     scope.launch {
                         refreshHealth()
-                        graph.repository.flush(NetworkStatus.isOnline(this@TrackingForegroundService))
+                        graph.repository.syncOutbound(NetworkStatus.isOnline(this@TrackingForegroundService))
                         updateNotification()
                     }
                 }

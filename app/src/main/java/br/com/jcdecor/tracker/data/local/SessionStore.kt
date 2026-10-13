@@ -43,6 +43,8 @@ class SessionStore(
                 putOptionalLong(prefs, KEY_ACCEPTED_AT, session.lastAcceptedAtEpochMs)
                 putOptionalString(prefs, KEY_ACCEPTED_LAT, session.lastAcceptedLatitude?.toString())
                 putOptionalString(prefs, KEY_ACCEPTED_LNG, session.lastAcceptedLongitude?.toString())
+                prefs[KEY_SERVER_ACK] = session.serverAcknowledged
+                prefs[KEY_STOP_PENDING] = session.stopPending
             }
             if (lastFix != null) {
                 prefs[KEY_FIX_LAT] = lastFix.latitude.toString()
@@ -80,6 +82,8 @@ class SessionStore(
         remove(KEY_ACCEPTED_AT)
         remove(KEY_ACCEPTED_LAT)
         remove(KEY_ACCEPTED_LNG)
+        remove(KEY_SERVER_ACK)
+        remove(KEY_STOP_PENDING)
     }
 
     private fun Preferences.toSession(): TrackingSession? {
@@ -102,6 +106,8 @@ class SessionStore(
             lastAcceptedLatitude = this[KEY_ACCEPTED_LAT]?.toDoubleOrNull(),
             lastAcceptedLongitude = this[KEY_ACCEPTED_LNG]?.toDoubleOrNull(),
             lastAcceptedAtEpochMs = this[KEY_ACCEPTED_AT],
+            serverAcknowledged = this[KEY_SERVER_ACK] ?: false,
+            stopPending = this[KEY_STOP_PENDING] ?: false,
         )
     }
 
@@ -138,6 +144,8 @@ class SessionStore(
         val KEY_ACCEPTED_LAT = stringPreferencesKey("accepted_lat")
         val KEY_ACCEPTED_LNG = stringPreferencesKey("accepted_lng")
         val KEY_ACCEPTED_AT = longPreferencesKey("accepted_at")
+        val KEY_SERVER_ACK = booleanPreferencesKey("server_acknowledged")
+        val KEY_STOP_PENDING = booleanPreferencesKey("stop_pending")
         val KEY_FIX_LAT = stringPreferencesKey("fix_lat")
         val KEY_FIX_LNG = stringPreferencesKey("fix_lng")
         val KEY_FIX_ACC = floatPreferencesKey("fix_accuracy")

@@ -78,19 +78,24 @@ Encerrar a sessão **não** apaga `pending_location`.
 
 WorkManager não entra nesta V1. O serviço já drena a fila enquanto rastreia, e a abertura do app reenvia o que sobrou. Um agendador extra não muda o comportamento pedido e aumentaria a superfície do projeto.
 
-Sessão e device id ficam no DataStore. O device id é um UUID criado na primeira execução. Não usamos IMEI nem número de telefone.
+Sessão e device id ficam no DataStore. O device id é um UUID criado na primeira execução e sobrevive a reinícios. Não usamos IMEI, serial, advertising ID nem identificador físico. A credencial `jctdev_` fica em EncryptedSharedPreferences (Android Keystore).
 
 ## 6. Protocolo HTTP
 
-`POST /api/tracking/routes/{routeId}/locations`
+O app não envia `route_id`. A associação aparelho → motorista → rota é do backend.
 
-O client REAL só chama esse path quando o ponto tem `routeId`. Sem rota, não há POST e não se inventa um identificador no caminho.
+1. `POST /api/app-logistica/tracking/devices/register/` com `Authorization: Bearer jcsvc_...` (`BOOTSTRAP_TOKEN`).
+2. `POST /api/app-logistica/tracking/sessions/` com o `jctdev_` devolvido.
+3. `POST /api/app-logistica/tracking/locations/` e `POST /api/app-logistica/tracking/heartbeat/` com `tracking_session_id`.
+4. `POST /api/app-logistica/tracking/sessions/<id>/stop/` no STOP. Sem rede, a intenção fica persistida e sai quando a conexão volta.
+5. `POST /api/app-logistica/tracking/devices/refresh/` depois de `refresh_after`, ou uma vez em 401 de credencial expirada/rotacionada. `device_revoked` para o envio e não registra de novo em loop.
+
+Ponto:
 
 ```json
 {
   "device_id": "uuid",
   "tracking_session_id": "uuid",
-  "route_id": null,
   "sequence": 21,
   "latitude": -23.5,
   "longitude": -46.6,
@@ -102,17 +107,15 @@ O client REAL só chama esse path quando o ponto tem `routeId`. Sem rota, não h
 }
 ```
 
-`recorded_at` é ISO-8601 em UTC. `speed` vai em metros por segundo, como o Fused Location entrega; a tela mostra km/h. `bearing` e `altitude` podem ser `null`.
+`recorded_at` é ISO-8601 em UTC. `speed` vai em metros por segundo. `bearing` e `altitude` podem ser omitidos. Nem o bootstrap nem o `jctdev_` entram em log ou no DEBUG.
 
-Header: `Authorization: Bearer <token>` e `Content-Type: application/json`. O token sai de `local.properties` → `BuildConfig.API_TOKEN`. O cliente nunca registra esse valor.
-
-`API_BASE_URL` e `API_TOKEN` não são segredo de produção no repositório. Veja `local.properties.example` e `.env.example`.
+Release exige HTTPS. Build debug aceita HTTP só para o backend local (`10.0.2.2` no emulador, IP da máquina no aparelho).
 
 ## 7. Heartbeat
 
-`POST /api/tracking/routes/{routeId}/heartbeat` a cada 30 s, com `device_id` e `recorded_at`.
+`POST /api/app-logistica/tracking/heartbeat/` a cada 30 s, com `tracking_session_id`, `device_id` e `recorded_at`. Não depende de rota.
 
-No MOCK só há log: `tracking heartbeat session=<uuid> route=null`. No REAL a chamada só sai quando houver `routeId`. Se o endpoint ainda não estiver no ar, a falha é registrada sem o token e o rastreamento continua. Heartbeat não entra na fila offline.
+No MOCK só há log: `tracking heartbeat session=<uuid> route=null`. Se a API falhar, a falha é registrada sem o token e o GPS continua. Heartbeat não entra na fila offline.
 
 ## 8. Comportamento em background
 

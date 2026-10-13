@@ -3,11 +3,15 @@
 sdk.dir=/caminho/para/Android/Sdk
 
 # MOCK: não chama a rede; o payload vai para o log JCTracker.
-# REAL: POST HTTPS na API abaixo.
+# REAL: fala com o backend da Logística.
 TRACKING_MODE=MOCK
 
 # Obrigatório no modo REAL. Precisa terminar com /.
+# Emulador, só em build debug: http://10.0.2.2:8000/
+# Aparelho físico na mesma rede, só em build debug: http://<ip-da-maquina>:8000/
+# Release exige HTTPS.
 API_BASE_URL=https://api.exemplo.jcdecor.com.br/
 
-# Token Bearer. Não commitar valor real. Não é impresso nos logs.
-API_TOKEN=
+# Credencial de bootstrap inteira. Placeholder falso. Não commitar valor real.
+# Não é impressa em log nem no DEBUG.
+BOOTSTRAP_TOKEN=jcsvc_examplepublic_not-a-real-secret

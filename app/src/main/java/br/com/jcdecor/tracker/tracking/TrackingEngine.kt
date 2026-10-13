@@ -112,12 +112,25 @@ class TrackingEngine(
         return stopping
     }
 
+    fun acknowledgeServer() {
+        val current = session ?: return
+        session = current.copy(serverAcknowledged = true)
+    }
+
+    fun markStopPending(): TrackingSession? {
+        val current = session ?: return null
+        val pending = current.copy(status = SessionStatus.STOPPING, interrupted = false, stopPending = true)
+        session = pending
+        return pending
+    }
+
     fun finishStop(): TrackingSession? {
         val current = session ?: return null
         if (current.status == SessionStatus.STOPPED) return current
         val stopped = current.copy(
             status = SessionStatus.STOPPED,
             interrupted = false,
+            stopPending = false,
             stoppedAtEpochMs = clock(),
         )
         session = stopped
@@ -213,8 +226,8 @@ class TrackingEngine(
                     log.info("LOCATION_SENT seq=${next.sequence}")
                     sent++
                 }
-                UploadResult.WaitingForRoute -> {
-                    log.info("LOCATION_BUFFERED seq=${next.sequence} reason=NO_ROUTE")
+                is UploadResult.Halted -> {
+                    log.info("LOCATION_BUFFERED seq=${next.sequence} reason=${result.reason}")
                     break
                 }
                 is UploadResult.Retryable -> {

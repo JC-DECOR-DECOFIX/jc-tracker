@@ -27,13 +27,8 @@ class MockLocationUploader(
 class MockHeartbeatClient(
     private val log: TrackerLog,
 ) : HeartbeatClient {
-    override suspend fun send(
-        trackingSessionId: String,
-        routeId: String?,
-        deviceId: String,
-        recordedAt: String,
-    ) {
-        log.info("tracking heartbeat session=$trackingSessionId route=${routeId ?: "null"}")
+    override suspend fun send(ping: br.com.jcdecor.tracker.tracking.HeartbeatPing) {
+        log.info("tracking heartbeat session=${ping.trackingSessionId} route=null")
     }
 }
 
@@ -44,10 +39,5 @@ class RetryableUploader(
 }
 
 class RetryableHeartbeat : HeartbeatClient {
-    override suspend fun send(
-        trackingSessionId: String,
-        routeId: String?,
-        deviceId: String,
-        recordedAt: String,
-    ) = Unit
+    override suspend fun send(ping: br.com.jcdecor.tracker.tracking.HeartbeatPing) = Unit
 }

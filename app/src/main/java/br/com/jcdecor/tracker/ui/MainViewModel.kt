@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import br.com.jcdecor.tracker.TrackerApplication
+import br.com.jcdecor.tracker.tracking.debugLabel
 import br.com.jcdecor.tracker.tracking.DebugSnapshot
 import br.com.jcdecor.tracker.tracking.LastFixSnapshot
 import br.com.jcdecor.tracker.tracking.TrackingSession
@@ -43,8 +44,12 @@ data class TrackerUiState(
     val batteryRestricted: Boolean = false,
     val lastHttpError: String? = null,
     val lastUploadAtEpochMs: Long? = null,
+    val lastHeartbeatAtEpochMs: Long? = null,
     val trackingMode: String = "",
     val apiBaseUrl: String = "",
+    val installationDeviceId: String? = null,
+    val deviceRegistered: Boolean = false,
+    val credentialState: String = "missing",
 ) {
     val running: Boolean
         get() = session?.let { it.status.isSessionActive() && !it.interrupted } == true
@@ -120,7 +125,26 @@ class MainViewModel(
             }
         }
         viewModelScope.launch {
-            graph.repository.flush(NetworkStatus.isOnline(getApplication()))
+            val id = graph.deviceIdStore.getOrCreate()
+            _ui.update { it.copy(installationDeviceId = id) }
+        }
+        viewModelScope.launch {
+            graph.runtime.credentialState.collect { state ->
+                _ui.update { it.copy(credentialState = state.debugLabel()) }
+            }
+        }
+        viewModelScope.launch {
+            graph.runtime.deviceRegistered.collect { registered ->
+                _ui.update { it.copy(deviceRegistered = registered) }
+            }
+        }
+        viewModelScope.launch {
+            graph.runtime.lastHeartbeatAtEpochMs.collect { at ->
+                _ui.update { it.copy(lastHeartbeatAtEpochMs = at) }
+            }
+        }
+        viewModelScope.launch {
+            graph.repository.syncOutbound(NetworkStatus.isOnline(getApplication()))
         }
     }
 
@@ -162,8 +186,13 @@ class MainViewModel(
         val ageSeconds = state.lastFix?.receivedAtEpochMs?.let { received ->
             ((state.nowEpochMs - received) / 1000L).coerceAtLeast(0L)
         }
+        val fix = state.lastFix
         return buildDebugReport(
             DebugSnapshot(
+                trackingMode = state.trackingMode,
+                deviceRegistered = state.deviceRegistered,
+                deviceId = state.installationDeviceId ?: state.session?.deviceId,
+                credentialState = state.credentialState,
                 trackingState = when {
                     state.interrupted -> "INTERRUPTED"
                     state.session != null -> state.session.status.name
@@ -172,12 +201,14 @@ class MainViewModel(
                 serviceActive = state.serviceActive,
                 trackingSessionId = state.session?.trackingSessionId,
                 routeId = state.session?.routeId,
-                deviceId = state.session?.deviceId,
                 lastLocationAgeSeconds = ageSeconds,
-                accuracyMeters = state.lastFix?.accuracyMeters,
+                accuracyMeters = fix?.accuracyMeters,
+                lastGps = fix?.let { "${it.latitude},${it.longitude}" },
                 networkOnline = state.internetAvailable,
                 pendingLocations = state.pendingCount,
                 batteryOptimization = state.batteryRestricted,
+                lastUploadAtEpochMs = state.lastUploadAtEpochMs,
+                lastHeartbeatAtEpochMs = state.lastHeartbeatAtEpochMs,
                 lastHttpError = state.lastHttpError,
             ),
         )
