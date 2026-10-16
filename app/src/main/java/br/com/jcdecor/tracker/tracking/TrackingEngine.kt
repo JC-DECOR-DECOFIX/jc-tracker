@@ -238,6 +238,14 @@ class TrackingEngine(
                     log.info("LOCATION_BUFFERED seq=${next.sequence} reason=${result.reason}")
                     break
                 }
+                is UploadResult.Rejected -> {
+                    // Recusado de vez: ficar com ele na fila seguraria todos os pontos
+                    // seguintes (cada um mais útil do que este) atrás de uma resposta
+                    // que nunca muda. Apaga e segue para o próximo.
+                    store.deleteById(next.id)
+                    nextAttemptAt.remove(next.id)
+                    log.info("LOCATION_DISCARDED seq=${next.sequence} reason=${result.reason}")
+                }
             }
         }
         return sent

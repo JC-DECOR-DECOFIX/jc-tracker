@@ -62,6 +62,25 @@ class TrackingEngineTest {
     }
 
     @Test
+    fun discardsARejectedPointAndSendsTheNextOne() = runBlocking {
+        // Um 409 (sequência em conflito) para o primeiro ponto nunca vai mudar: ele é
+        // descartado e o segundo sai na mesma passada, em vez de ficar preso atrás dele.
+        val harness = harness(results = ArrayDeque(listOf(UploadResult.Rejected("sequence_conflict"), UploadResult.Success)))
+        harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-9")
+        harness.engine.onLocation(fix(accuracy = 4f, lat = -23.5), networkAvailable = false)
+        harness.engine.onLocation(fix(accuracy = 4f, lat = -23.6), networkAvailable = false)
+        assertEquals(2, harness.store.count())
+
+        val sent = harness.engine.flush(networkAvailable = true)
+
+        assertEquals(1, sent)
+        assertEquals(listOf(1L, 2L), harness.uploader.uploaded)
+        assertEquals(0, harness.store.count())
+        assertTrue(harness.log.lines.contains("LOCATION_DISCARDED seq=1 reason=sequence_conflict"))
+        assertTrue(harness.log.lines.contains("LOCATION_SENT seq=2"))
+    }
+
+    @Test
     fun doesNotSendLaterPointsBeforeAnOlderFailure() = runBlocking {
         val harness = harness(results = ArrayDeque(listOf(UploadResult.Retryable("HTTP_503"))))
         harness.engine.start(deviceId = "dev-1", trackingSessionId = "session-88")

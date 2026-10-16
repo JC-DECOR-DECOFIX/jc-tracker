@@ -73,6 +73,11 @@ class LogisticsTracker(
                 diagnostics?.onHttpError(call.reason)
                 OutboundResult.Retryable(call.reason)
             }
+            is Call.Rejected -> {
+                // Parar uma sessão que o backend já fechou é o resultado desejado.
+                log.info("tracking.stop session=${session.trackingSessionId} result=${call.reason}")
+                OutboundResult.Ok
+            }
             is Call.AuthRejected -> {
                 diagnostics?.onHttpError(call.codeName)
                 OutboundResult.Retryable(call.codeName)
@@ -120,6 +125,11 @@ class LogisticsTracker(
                 log.info("tracking.location session=${point.trackingSessionId} seq=${point.sequence} result=${call.reason}")
                 UploadResult.Retryable(call.reason)
             }
+            is Call.Rejected -> {
+                diagnostics?.onHttpError(call.reason)
+                log.info("tracking.location session=${point.trackingSessionId} seq=${point.sequence} result=${call.reason}")
+                UploadResult.Rejected(call.reason)
+            }
             is Call.AuthRejected -> {
                 diagnostics?.onHttpError(call.codeName)
                 UploadResult.Retryable(call.codeName)
@@ -164,9 +174,10 @@ class LogisticsTracker(
                 log.info("tracking.heartbeat session=${ping.trackingSessionId} result=${call.code}")
             }
             is Call.Revoked -> diagnostics?.onHttpError(call.reason)
-            is Call.Retryable -> {
-                diagnostics?.onHttpError(call.reason)
-                log.info("HEARTBEAT_FAILED session=${ping.trackingSessionId} code=${call.reason}")
+            is Call.Retryable, is Call.Rejected -> {
+                val reason = if (call is Call.Retryable) call.reason else (call as Call.Rejected).reason
+                diagnostics?.onHttpError(reason)
+                log.info("HEARTBEAT_FAILED session=${ping.trackingSessionId} code=$reason")
             }
             is Call.AuthRejected -> {
                 diagnostics?.onHttpError(call.codeName)
@@ -200,6 +211,11 @@ class LogisticsTracker(
             }
             is Call.Revoked -> OutboundResult.Revoked(call.reason)
             is Call.Retryable -> {
+                diagnostics?.onHttpError(call.reason)
+                log.info("tracking.session session=$sessionId result=${call.reason}")
+                OutboundResult.Retryable(call.reason)
+            }
+            is Call.Rejected -> {
                 diagnostics?.onHttpError(call.reason)
                 log.info("tracking.session session=$sessionId result=${call.reason}")
                 OutboundResult.Retryable(call.reason)
@@ -355,6 +371,9 @@ class LogisticsTracker(
         if (response.code in 200..299) return Call.Ok(response.code)
         val code = errorCodeOf(response.body)
         if (response.code == 401 && code != null) return Call.AuthRejected(code)
+        if (response.code in 400..499 && response.code !in RETRYABLE_CLIENT_ERRORS) {
+            return Call.Rejected(code ?: "HTTP_${response.code}")
+        }
         return Call.Retryable(code ?: "HTTP_${response.code}")
     }
 
@@ -368,12 +387,16 @@ class LogisticsTracker(
     private sealed class Call {
         data class Ok(val code: Int) : Call()
         data class Retryable(val reason: String) : Call()
+        /** Um 4xx definitivo para esta requisição: repetir dá a mesma resposta. */
+        data class Rejected(val reason: String) : Call()
         data class Revoked(val reason: String) : Call()
         data class AuthRejected(val codeName: String) : Call()
     }
 
     private companion object {
         const val RECOVERY_COOLDOWN_MS = 60_000L
+        /** Os 4xx que ainda valem nova tentativa: autenticação, tempo esgotado, limite. */
+        val RETRYABLE_CLIENT_ERRORS = setOf(401, 408, 425, 429)
         val NETWORK_TYPE = Regex("^[a-z0-9_-]{1,16}$")
     }
 }

@@ -138,6 +138,14 @@ sealed class UploadResult {
     data object Success : UploadResult()
     data class Retryable(val reason: String) : UploadResult()
 
+    /**
+     * O backend recusou ESTE ponto de vez (4xx que não é autenticação nem limite:
+     * payload inválido, sequência em conflito, sessão fechada, rota trocada). Reenviar
+     * daria a mesma resposta para sempre e seguraria todos os pontos atrás dele; o
+     * motor apaga o ponto, registra `LOCATION_DISCARDED` e segue com o próximo.
+     */
+    data class Rejected(val reason: String) : UploadResult()
+
     /** Para o envio deste ciclo sem apagar o ponto e sem registrar de novo. */
     data class Halted(val reason: String) : UploadResult()
 }
